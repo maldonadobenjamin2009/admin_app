@@ -20,9 +20,15 @@
         * { box-sizing: border-box; outline: none; }
         body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg-body); color: var(--text-main); margin: 0; padding: 0; height: 100vh; overflow: hidden; }
 
-        .admin-layout { display: grid; grid-template-columns: 260px 1fr; height: 100%; }
-        .admin-sidebar { background: #0c4a6e; color: white; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+        /* LAYOUT DE ESCRITORIO */
+        .admin-layout { display: grid; grid-template-columns: 260px 1fr; height: 100%; transition: all 0.3s; }
+        .admin-sidebar { background: #0c4a6e; color: white; padding: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 20; }
         .admin-content { padding: 30px; overflow-y: auto; position: relative; }
+        
+        /* BOTÓN HAMBURGUESA (Oculto en escritorio) */
+        .mobile-toggle-btn { display: none; position: fixed; top: 15px; left: 15px; z-index: 100; padding: 10px 15px; background: var(--primary); color: white; border-radius: 8px; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.2); cursor: pointer; }
+        .mobile-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 15; backdrop-filter: blur(2px); }
+
         .card { background: var(--bg-card); border-radius: var(--radius); padding: 25px; margin-bottom: 20px; border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
         button { width: 100%; padding: 12px; border: none; border-radius: var(--radius); cursor: pointer; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 8px; transition: 0.2s; }
         button:hover { opacity: 0.9; }
@@ -58,7 +64,36 @@
         .admin-section { display: none; }
         .admin-section.active { display: block; animation: fadeEffect 0.2s; }
         @keyframes fadeEffect { from {opacity: 0;} to {opacity: 1;} }
-        @media (max-width: 768px) { .admin-layout { grid-template-columns: 1fr; } .admin-sidebar { display: none; position: absolute; z-index: 100; height: 100%; width: 250px; } .admin-sidebar.show { display: flex; } }
+
+        /* --- MODO CELULAR (RESPONSIVE) --- */
+        @media (max-width: 768px) { 
+            /* Layout cambia a una sola columna */
+            .admin-layout { grid-template-columns: 1fr; }
+            
+            /* Sidebar oculto por defecto, se mueve a la izquierda fuera de pantalla */
+            .admin-sidebar { 
+                position: fixed; 
+                top: 0; 
+                left: 0; 
+                width: 280px; 
+                height: 100%; 
+                transform: translateX(-100%); /* Oculto */
+                transition: transform 0.3s ease-in-out;
+                box-shadow: 2px 0 10px rgba(0,0,0,0.2);
+            }
+            
+            /* Clase para mostrar el sidebar cuando se activa */
+            .admin-sidebar.show { transform: translateX(0); }
+            
+            /* Mostrar botón hamburguesa */
+            .mobile-toggle-btn { display: block; }
+            
+            /* Ajustar contenido para que no quede tapado por el botón */
+            .admin-content { padding-top: 70px; }
+            
+            /* Mostrar overlay cuando el menú está abierto */
+            .mobile-overlay.show { display: block; }
+        }
     </style>
 </head>
 <body>
@@ -73,11 +108,21 @@
     </div>
 </div>
 
-<button onclick="document.querySelector('.admin-sidebar').classList.toggle('show')" style="position:fixed; top:20px; left:20px; width:40px; z-index:101; display:none;" class="mobile-btn btn-primary"><i class="fas fa-bars"></i></button>
+<!-- ELEMENTOS PARA MÓVIL -->
+<button class="mobile-toggle-btn" onclick="toggleMenu()">
+    <i class="fas fa-bars fa-lg"></i>
+</button>
+<div id="mobile-overlay" class="mobile-overlay" onclick="toggleMenu()"></div>
 
 <div class="admin-layout" id="main-interface" style="display:none;">
-    <div class="admin-sidebar">
-        <h2 style="text-align:center; color:var(--primary);">BITÁCORA <small style="font-size:0.4em; color:#bae6fd">PRO</small></h2>
+    <div class="admin-sidebar" id="sidebar">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2 style="text-align:center; color:var(--primary); margin:0;">BITÁCORA <small style="font-size:0.4em; color:#bae6fd">PRO</small></h2>
+            <!-- Botón cerrar menú en móvil -->
+            <button onclick="toggleMenu()" style="background:transparent; border:none; color:white; width:auto; display:none;" id="close-menu-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <hr style="border-color: rgba(255,255,255,0.1); margin: 10px 0;">
+        
         <button class="btn-menu active" onclick="nav('dashboard', this)"><i class="fas fa-box-open"></i> Inventario Global</button>
         <button class="btn-menu" onclick="nav('products', this)"><i class="fas fa-plus-circle"></i> Agregar Producto</button>
         <button class="btn-menu" onclick="nav('history', this)"><i class="fas fa-history"></i> Historial & Logs</button>
@@ -88,9 +133,9 @@
 
     <div class="admin-content">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;">
-            <h1 id="page-title">Panel de Control</h1>
+            <h1 id="page-title" style="font-size: 1.5rem;">Panel de Control</h1>
             <div style="display:flex; gap:10px; align-items:center;">
-                <span id="user-name">Usuario</span>
+                <span id="user-name" style="display:none;">Usuario</span> <!-- Oculto nombre en móvil para ahorrar espacio -->
                 <img id="user-pic" src="" style="width:40px; height:40px; border-radius:50%;">
             </div>
         </div>
@@ -203,6 +248,21 @@
     let productsList = [];
     let myStores = []; 
 
+    // --- MANEJO DEL MENÚ MÓVIL ---
+    function toggleMenu() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('mobile-overlay');
+        const closeBtn = document.getElementById('close-menu-btn');
+        
+        sidebar.classList.toggle('show');
+        overlay.classList.toggle('show');
+        
+        // Mostrar botón de cierre dentro del menú solo en móvil
+        if (window.innerWidth <= 768) {
+            closeBtn.style.display = sidebar.classList.contains('show') ? 'block' : 'none';
+        }
+    }
+
     // --- AUTH ---
     async function checkUser() {
         if (!supabaseClient) return;
@@ -228,6 +288,11 @@
 
     function initApp() {
         document.getElementById('main-interface').style.display = 'grid';
+        
+        // Mostrar nombre solo en escritorio
+        if(window.innerWidth > 768) {
+            document.getElementById('user-name').style.display = 'block';
+        }
         document.getElementById('user-name').textContent = currentUser.user_metadata.full_name || currentUser.email;
         document.getElementById('user-pic').src = currentUser.user_metadata.avatar_url || 'https://via.placeholder.com/40';
         document.getElementById('settings-email').textContent = currentUser.email;
@@ -240,9 +305,8 @@
         });
     }
 
-    // --- LOGGING SYSTEM (NUEVO) ---
+    // --- LOGGING SYSTEM ---
     async function logAction(actionName, details) {
-        // Guardamos todo en sales_history usando "SISTEMA" como cliente y 0 como total
         await supabaseClient.from('sales_history').insert({
             admin_id: currentUser.id,
             client_name: 'SISTEMA - ' + actionName,
@@ -285,7 +349,6 @@
         else {
             showToast('Creado');
             logAction('CREAR PRODUCTO', `Producto: ${name} (${brand}), Stock: ${qty}, Local: ${store || 'Global'}`);
-            // Limpiar inputs
             document.querySelectorAll('#products input').forEach(i => i.value = '');
         }
     }
@@ -369,7 +432,6 @@
         if(data) {
             data.forEach(h => {
                 const date = new Date(h.created_at).toLocaleString();
-                // Estilo diferente si es log de sistema o venta
                 const isSys = h.client_name.includes('SISTEMA');
                 const color = isSys ? 'var(--secondary)' : 'var(--success)';
                 const icon = isSys ? '<i class="fas fa-cogs"></i>' : '<i class="fas fa-shopping-cart"></i>';
@@ -383,29 +445,17 @@
     }
 
     async function downloadReport(type) {
-        showToast("Generando reporte completo...");
-        // 1. Descargar TODO el historial (sin limite)
+        showToast("Generando reporte...");
         const { data } = await supabaseClient.from('sales_history').select('*').order('created_at', {ascending: false});
-        
         if(!data || data.length === 0) return showToast("Historial vacío");
 
-        // Preparar datos
-        const rows = data.map(r => ({
-            Fecha: new Date(r.created_at).toLocaleString(),
-            Tipo_Cliente: r.client_name,
-            Detalles: r.details,
-            Total: r.total
-        }));
+        const rows = data.map(r => ({ Fecha: new Date(r.created_at).toLocaleString(), Tipo_Cliente: r.client_name, Detalles: r.details, Total: r.total }));
 
-        // EXPORTAR SEGUN TIPO
         if(type === 'pdf') {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             doc.text("Reporte Histórico - Bitácora", 14, 15);
-            doc.autoTable({
-                head: [['Fecha', 'Tipo/Cliente', 'Detalles', 'Total']],
-                body: rows.map(r => [r.Fecha, r.Tipo_Cliente, r.Detalles, '$' + r.Total])
-            });
+            doc.autoTable({ head: [['Fecha', 'Tipo/Cliente', 'Detalles', 'Total']], body: rows.map(r => [r.Fecha, r.Tipo_Cliente, r.Detalles, '$' + r.Total]) });
             doc.save('reporte_bitacora.pdf');
         } 
         else if (type === 'excel' || type === 'csv') {
@@ -416,9 +466,7 @@
         }
         else if (type === 'txt') {
             let content = "REPORTE HISTÓRICO - BITÁCORA\n============================\n\n";
-            rows.forEach(r => {
-                content += `[${r.Fecha}] ${r.Tipo_Cliente} - $${r.Total}\nDetalle: ${r.Detalles}\n-----------------------------------\n`;
-            });
+            rows.forEach(r => { content += `[${r.Fecha}] ${r.Tipo_Cliente} - $${r.Total}\nDetalle: ${r.Detalles}\n-----------------------------------\n`; });
             const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
@@ -438,7 +486,12 @@
         document.getElementById(id).classList.add('active');
         document.querySelectorAll('.btn-menu').forEach(e => e.classList.remove('active'));
         if(btn) btn.classList.add('active');
-        document.querySelector('.admin-sidebar').classList.remove('show');
+        
+        // Cierra el menú al navegar (para móviles)
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('mobile-overlay');
+        sidebar.classList.remove('show');
+        overlay.classList.remove('show');
     }
     function showToast(m) { const t=document.getElementById('toast'); t.textContent=m; t.className='show'; setTimeout(()=>t.className='',3000); }
     function closeModal(id) { document.getElementById(id).classList.remove('show'); }
