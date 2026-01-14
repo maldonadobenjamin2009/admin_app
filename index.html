@@ -384,24 +384,49 @@
     async function updateProduct() {
         const id = document.getElementById('edit-id').value;
         const name = document.getElementById('edit-name').value;
-        const qty = parseFloat(document.getElementById('edit-qty').value);
-        const price = document.getElementById('edit-price').value;
-        const store = document.getElementById('edit-product-store').value;
+        const brand = document.getElementById('edit-brand').value;
+        const model = document.getElementById('edit-model').value;
         const measure = document.getElementById('edit-measure').value;
+        const store = document.getElementById('edit-product-store').value;
 
+        // 1. Obtener números y corregir comas
+        let rawPrice = document.getElementById('edit-price').value.toString().replace(',', '.');
+        let rawQty = document.getElementById('edit-qty').value.toString().replace(',', '.');
+
+        const price = parseFloat(rawPrice);
+        const qty = parseFloat(rawQty);
+
+        // 2. Validación estricta
+        if (!name || isNaN(qty) || isNaN(price)) {
+            return showToast('❌ Error: Revisa que el precio y stock sean números válidos.');
+        }
+
+        // 3. Enviar actualización a Supabase
         const { error } = await supabaseClient.from('products').update({
-            name, brand: document.getElementById('edit-brand').value,
-            model: document.getElementById('edit-model').value,
-            quantity: qty, price: parseFloat(price), 
-            store_code: store || null, measurement_unit: measure
+            name: name,
+            brand: brand,
+            model: model,
+            quantity: qty,
+            price: price,
+            store_code: store || null,
+            measurement_unit: measure
         }).eq('id', id);
 
-        if(!error) {
-            showToast("Actualizado"); closeModal('edit-modal');
-            logAction('EDITAR PRODUCTO', `Editado: ${name}. Stock: ${qty} ${measure}`);
+        // 4. Manejo de respuesta
+        if (error) {
+            console.error("Error al actualizar:", error);
+            showToast('Error: ' + error.message);
+        } else {
+            showToast('✅ Producto actualizado correctamente');
+            closeModal('edit-modal');
+            
+            // Log de seguridad
+            logAction('EDITAR PRODUCTO', `Editado: ${name}. Stock actual: ${qty} ${measure}`);
+            
+            // Forzar recarga visual inmediata (por si el Realtime tarda un segundo)
+            fetchProducts();
         }
     }
-
     // --- STORES ---
     async function fetchStores() {
         const { data } = await supabaseClient.from('store_codes').select('*').eq('admin_id', currentUser.id);
