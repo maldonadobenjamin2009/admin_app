@@ -302,14 +302,31 @@
     }
     async function signOut() { await supabaseClient.auth.signOut(); window.location.reload(); }
 
-    function initApp() {
+// Hacemos la función ASYNC para poder usar 'await' (esperar)
+    async function initApp() {
         document.getElementById('main-interface').style.display = 'grid';
+        
+        // Mostrar elementos de UI
         if(window.innerWidth > 768) { document.getElementById('user-name').style.display = 'block'; }
         document.getElementById('user-name').textContent = currentUser.user_metadata.full_name || currentUser.email;
         document.getElementById('user-pic').src = currentUser.user_metadata.avatar_url || 'https://via.placeholder.com/40';
         document.getElementById('settings-email').textContent = currentUser.email;
         document.getElementById('settings-id').textContent = currentUser.id;
-        syncProfile(); fetchProducts(); fetchHistory(); fetchStores(); fetchAssistants(); subscribeRealtime();
+
+        // 1. PRIMERO: Sincronizar perfil
+        await syncProfile();
+        
+        // 2. SEGUNDO (CRÍTICO): Cargar las tiendas ANTES que los productos
+        // Esto asegura que cuando carguen los productos, ya sepamos los nombres de los locales
+        await fetchStores(); 
+        
+        // 3. TERCERO: Cargar asistentes y productos
+        fetchAssistants();
+        await fetchProducts(); // Ahora sí renderizará bien los nombres
+        
+        // 4. Resto
+        fetchHistory();
+        subscribeRealtime();
     }
     async function syncProfile() {
         await supabaseClient.from('profiles').upsert({
@@ -330,13 +347,42 @@
         document.getElementById('loading-products').style.display = 'none';
     }
     function renderProducts() {
-        const list = document.getElementById('product-list'); list.innerHTML = '';
+        const list = document.getElementById('product-list'); 
+        list.innerHTML = '';
         const term = document.getElementById('search-input').value.toLowerCase();
+        
         productsList.filter(p => p.name.toLowerCase().includes(term)).forEach(p => {
             let localName = "Global";
-            if (p.store_code) { const s = myStores.find(st => st.code === p.store_code); localName = s ? s.store_name : "Local?"; }
+            let badgeColor = "background:#e0f2fe; color:#0284c7;"; // Azul (Global)
+
+            // Buscar el nombre del local si tiene código asignado
+            if (p.store_code) { 
+                const s = myStores.find(st => st.code === p.store_code); 
+                if (s) {
+                    localName = s.store_name;
+                    badgeColor = "background:#ecfdf5; color:#059669;"; // Verde (Local encontrado)
+                } else {
+                    localName = "Local Borrado/Desconocido";
+                    badgeColor = "background:#fee2e2; color:#ef4444;"; // Rojo (Error)
+                }
+            }
+            
             const unit = p.measurement_unit || 'un';
-            list.innerHTML += `<li class="item-row"><div style="flex:1"><strong>${p.name}</strong> <small>(${p.brand})</small><br><span style="font-size:0.8em;background:#ecfeff;color:#0891b2;padding:2px 5px;border-radius:4px;">${localName}</span> Stock: <b>${p.quantity} ${unit}</b> | $${p.price}</div><div style="display:flex;gap:5px"><button class="btn-secondary btn-sm" onclick="openEdit('${p.id}')"><i class="fas fa-edit"></i></button><button class="btn-danger btn-sm" onclick="deleteProduct('${p.id}')"><i class="fas fa-trash"></i></button></div></li>`;
+            
+            list.innerHTML += `
+            <li class="item-row">
+                <div style="flex:1">
+                    <strong>${p.name}</strong> <small style="color:var(--text-muted)">(${p.brand || ''})</small><br>
+                    <span style="font-size:0.8em; padding:2px 6px; border-radius:4px; ${badgeColor} font-weight:bold;">
+                        <i class="fas fa-map-marker-alt"></i> ${localName}
+                    </span> 
+                    <span style="margin-left:10px; font-size:0.9em">Stock: <b>${p.quantity} ${unit}</b> | $${p.price}</span>
+                </div>
+                <div style="display:flex; gap:5px">
+                    <button class="btn-secondary btn-sm" onclick="openEdit('${p.id}')"><i class="fas fa-edit"></i></button>
+                    <button class="btn-danger btn-sm" onclick="deleteProduct('${p.id}')"><i class="fas fa-trash"></i></button>
+                </div>
+            </li>`;
         });
     }
     async function createProduct() {
@@ -371,14 +417,20 @@
     }
     function openEdit(id) {
         const p = productsList.find(x => x.id === id);
+        if(!p) return;
+
         document.getElementById('edit-id').value = id;
         document.getElementById('edit-name').value = p.name;
         document.getElementById('edit-brand').value = p.brand;
         document.getElementById('edit-model').value = p.model;
         document.getElementById('edit-qty').value = p.quantity;
         document.getElementById('edit-price').value = p.price;
-        document.getElementById('edit-product-store').value = p.store_code || "";
         document.getElementById('edit-measure').value = p.measurement_unit || "un";
+        
+        // Asignar el local. Si es null, se pone en "" (Global)
+        const storeSelect = document.getElementById('edit-product-store');
+        storeSelect.value = p.store_code || ""; 
+
         document.getElementById('edit-modal').classList.add('show');
     }
     async function updateProduct() {
@@ -427,6 +479,7 @@
             fetchProducts();
         }
     }
+
     // --- STORES ---
     async function fetchStores() {
         const { data } = await supabaseClient.from('store_codes').select('*').eq('admin_id', currentUser.id);
