@@ -444,9 +444,40 @@
         }
     }
     async function deleteStore(code, name) {
-        if(!confirm("¿Eliminar local?")) return;
-        const { error } = await supabaseClient.from('store_codes').delete().eq('code', code);
-        if(!error) { showToast("Eliminado"); fetchStores(); logAction('BORRAR LOCAL', `Eliminado: ${name}`); }
+        if(!confirm(`¿Estás seguro de eliminar "${name}"?\n\nLos productos de este local se moverán al Inventario Global.`)) return;
+        
+        // 1. PASO DE SEGURIDAD: Mover productos al Global (NULL) antes de borrar la tienda
+        // Esto evita errores de "Foreign Key" y evita que se pierda el stock.
+        const { error: updateError } = await supabaseClient
+            .from('products')
+            .update({ store_code: null }) // null = Global
+            .eq('store_code', code);
+
+        if (updateError) {
+            console.error(updateError);
+            return showToast("Error moviendo inventario: " + updateError.message);
+        }
+
+        // 2. AHORA SÍ: Eliminar el local
+        const { error } = await supabaseClient
+            .from('store_codes')
+            .delete()
+            .eq('code', code);
+
+        if (error) {
+            console.error("Error al eliminar local:", error);
+            // Si el error es por integridad referencial (tiene pedidos vinculados, etc)
+            if (error.code === '23503') {
+                showToast("⚠️ No se puede eliminar: Este local tiene movimientos/pedidos históricos vinculados.");
+            } else {
+                showToast("❌ Error al eliminar: " + error.message);
+            }
+        } else { 
+            showToast("✅ Local eliminado y stock recuperado"); 
+            fetchStores(); 
+            fetchProducts(); // Actualizar lista de productos para ver que volvieron a Global
+            logAction('BORRAR LOCAL', `Eliminado: ${name} (Stock movido a Global)`); 
+        }
     }
 
     async function fetchAssistants() {
